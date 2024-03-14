@@ -3,9 +3,9 @@ main:
     url: /
   - title: "Posts"
     url: /year-archive/
-  - title: "Categorias"
+  - title: "Categorías"
     url: /categories/
   - title: "Tags"
     url: /tags/
-  - title: "Sobre mi"
+  - title: "Sobre mí"
     url: /about/
