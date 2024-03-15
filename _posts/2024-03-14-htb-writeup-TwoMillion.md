@@ -5,216 +5,214 @@ excerpt: "Esta máquina fácil será mi primera publicación en esta página, mi
 date: 2024-03-14
 classes: wide
 header:
-  teaser: /assets/images/htb-writeup-delivery/delivery_logo.png
+  teaser: /assets/images/htb-writeup-twoMillion/twoMillion_logo.png
   teaser_home_page: true
   icon: /assets/images/hackthebox.webp
 categories:
   - hackthebox
   - infosec
 tags:  
-  - osticket
-  - mysql
-  - mattermost
-  - hashcat
-  - rules
+  - JavaScript
+  - API
+  - Inyección de comandos
+  - Enumeracion de sistema
+  - CVE-2024-0386
 ---
 
-![](/assets/images/htb-writeup-delivery/delivery_logo.png)
+![](/assets/images/htb-writeup-twoMillion/twoMillion_logo.png)
 
 Bueno, empezamos con esta máquina fácil de HackTheBox, la descripción de la máquina nos dice que fue lanzada para celebrar los 2 millones de usuarios en la página. La máquina es una versión antigüa de la misma página que incluye una invitación hackeable. Nos dice que después de hackear la invitación una cuenta puede crearse en la plataforma. La cuenta puede ser usada para enumerar varios API, y solo uno puede ser usado para elevar el usuario a admin. Con accesos administrativos el usuario puede ejecutar un comando de inyección en la VPN del administarador, lo cual nos puede permitir ingresar a una shell. y un archivo .env, este archivo contiene las credenciales de la base de datos y asi podemos ingresar como user admin dentro de la máquina. El kernel del sistema se encuentra desactualizado y el exploit CVE-2023-0386 puede ser usado para ganar el shell de root. Bueno, con esto comenzamos.
 
-## Portscan
+## Escaneo de puerto
+
+El siguiente comando nos ayuda a escanear los puertos abiertos de la máquina víctima y los exporta a un archivo llamado "escaneo" y como podemos observar tenemos el 80 y el 22 abiertos a los que corresponden a los servicios http y ssh 
 
 ```
-Nmap scan report for 10.129.148.141
-Host is up (0.018s latency).
-Not shown: 65532 closed ports
-PORT     STATE SERVICE VERSION
-22/tcp   open  ssh     OpenSSH 7.9p1 Debian 10+deb10u2 (protocol 2.0)
-| ssh-hostkey: 
-|   2048 9c:40:fa:85:9b:01:ac:ac:0e:bc:0c:19:51:8a:ee:27 (RSA)
-|   256 5a:0c:c0:3b:9b:76:55:2e:6e:c4:f4:b9:5d:76:17:09 (ECDSA)
-|_  256 b7:9d:f7:48:9d:a2:f2:76:30:fd:42:d3:35:3a:80:8c (ED25519)
-80/tcp   open  http    nginx 1.14.2
-|_http-server-header: nginx/1.14.2
-|_http-title: Welcome
-8065/tcp open  unknown
-| fingerprint-strings: 
-|   GenericLines, Help, RTSPRequest, SSLSessionReq, TerminalServerCookie: 
-|     HTTP/1.1 400 Bad Request
-|     Content-Type: text/plain; charset=utf-8
-|     Connection: close
-|     Request
-|   GetRequest: 
-|     HTTP/1.0 200 OK
-|     Accept-Ranges: bytes
-|     Cache-Control: no-cache, max-age=31556926, public
-|     Content-Length: 3108
-|     Content-Security-Policy: frame-ancestors 'self'; script-src 'self' cdn.rudderlabs.com
-|     Content-Type: text/html; charset=utf-8
-|     Last-Modified: Sun, 09 May 2021 00:00:02 GMT
-|     X-Frame-Options: SAMEORIGIN
-|     X-Request-Id: fqrpd5m3ftgnzmxkbieezqadxo
-|     X-Version-Id: 5.30.0.5.30.1.57fb31b889bf81d99d8af8176d4bbaaa.false
-|     Date: Sun, 09 May 2021 00:01:31 GMT
-|     <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=0"><meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer"><title>Mattermost</title><meta name="mobile-web-app-capable" content="yes"><meta name="application-name" content="Mattermost"><meta name="format-detection" content="telephone=no"><link re
-|   HTTPOptions: 
-|     HTTP/1.0 405 Method Not Allowed
-|     Date: Sun, 09 May 2021 00:01:31 GMT
-|_    Content-Length: 0
-```
-
-## Website
-
-The Delivery website is pretty basic, there's a link to a vhost called helpdesk.delivery.htb and a contact us section. We'll add this entry to our local host before proceeding further.
-
-![](/assets/images/htb-writeup-delivery/website1.png)
-
-The contact us section tells us we need an @delivery.htb email address and tells us port 8065 is a MatterMost server. MatterMost is a Slack-like collaboration platform that can be self-hosted.
-
-![](/assets/images/htb-writeup-delivery/website2.png)
-
-Browsing to port 8065 we get the MatterMost login page but we don't have credentials yet
-
-![](/assets/images/htb-writeup-delivery/mm1.png)
-
-## Helpdesk
-
-The Helpdesk page uses the OsTicket web application. It allows users to create and view the status of ticket.
-
-![](/assets/images/htb-writeup-delivery/helpdesk3.png)
-
-We can still open new tickets even if we only have a guest user.
-
-![](/assets/images/htb-writeup-delivery/helpdesk1.png)
-
-After a ticket has been created, the system generates a random @delivery.htb email account with the ticket ID.
-
-![](/assets/images/htb-writeup-delivery/helpdesk2.png)
-
-Now that we have an email account we can create a MatterMost account.
-
-![](/assets/images/htb-writeup-delivery/mm2.png)
-
-A confirmation email is then sent to our ticket status inbox.
-
-![](/assets/images/htb-writeup-delivery/mm3.png)
-
-We use the check ticket function on the OsTicket application and submit the original email address we used when creating the ticket and the ticket ID.
-
-![](/assets/images/htb-writeup-delivery/mm4.png)
-
-We're now logged in and we see that the MatterMost confirmation email has been added to the ticket information.
-
-![](/assets/images/htb-writeup-delivery/mm5.png)
-
-To confirm the creation of our account we'll just copy/paste the included link into a browser new tab.
-
-![](/assets/images/htb-writeup-delivery/mm6.png)
-
-After logging in to MatterMost we have access to the Internal channel where we see that credentials have been posted. There's also a hint that we'll have to use a variation of the `PleaseSubscribe!` password later.
-
-![](/assets/images/htb-writeup-delivery/mm7.png)
-
-## User shell
-
-With the `maildeliverer / Youve_G0t_Mail!` credentials we can SSH in and get the user flag.
-
-![](/assets/images/htb-writeup-delivery/user.png)
-
-## Credentials in MySQL database
-
-After doing some recon we find the MatterMost installation directory in `/opt/mattermost`:
+   1   │ # Nmap 7.94SVN scan initiated Thu Mar 14 22:53:06 2024 as: nmap -p- --open -
+       │ sS --min-rate 5000 -n -Pn -vvv -oN escaneo 10.10.11.221
+   2   │ Nmap scan report for 10.10.11.221
+   3   │ Host is up, received user-set (0.11s latency).
+   4   │ Scanned at 2024-03-14 22:53:06 CST for 14s
+   5   │ Not shown: 65533 closed tcp ports (reset)
+   6   │ PORT   STATE SERVICE REASON
+   7   │ 22/tcp open  ssh     syn-ack ttl 63
+   8   │ 80/tcp open  http    syn-ack ttl 63
+   9   │ 
+  10   │ Read data files from: /usr/bin/../share/nmap
+  11   │ # Nmap done at Thu Mar 14 22:53:20 2024 -- 1 IP address (1 host up) scanned 
+       │ in 13.62 seconds
 
 ```
-maildeliverer@Delivery:/opt/mattermost/config$ ps waux | grep -i mattermost
-matterm+   741  0.2  3.3 1649596 135112 ?      Ssl  20:00   0:07 /opt/mattermost/bin/mattermost
-```
 
-The `config.json` file contains the password for the MySQL database:
 
-```
-[...]
-"SqlSettings": {
-        "DriverName": "mysql",
-        "DataSource": "mmuser:Crack_The_MM_Admin_PW@tcp(127.0.0.1:3306)/mattermost?charset=utf8mb4,utf8\u0026readTimeout=30s\u0026writeTimeout=30s",
-[...]
-```
 
-We'll connect to the database server and poke around.
+## Página web 
+
+Al poner la IP de la máquina víctima podemos observar que nos redirige hacia https://2million.htb 
+
+![](/assets/images/htb-writeup-twoMillion/website1.png)
+
+Lo que podemos hacer para poder observar la página es agregar el vHost a nuestro archvio hosts de nuestra máquina con el siguiente comando 
 
 ```
-maildeliverer@Delivery:/$ mysql -u mmuser --password='Crack_The_MM_Admin_PW'
-Welcome to the MariaDB monitor.  Commands end with ; or \g.
-Your MariaDB connection id is 91
-Server version: 10.3.27-MariaDB-0+deb10u1 Debian 10
-
-Copyright (c) 2000, 2018, Oracle, MariaDB Corporation Ab and others.
-
-Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
-
-MariaDB [(none)]> show databases;
-+--------------------+
-| Database           |
-+--------------------+
-| information_schema |
-| mattermost         |
-+--------------------+
-```
-
-MatterMost user accounts are stored in the `Users` table and hashed with bcrypt. We'll save the hashes then try to crack them offline.
+echo '10.10.11.221 2million.htb' | sudo tee -a /etc/hosts
 
 ```
-MariaDB [(none)]> use mattermost;
-Reading table information for completion of table and column names
-You can turn off this feature to get a quicker startup with -A
 
-Database changed
-MariaDB [mattermost]> select Username,Password from Users;
-+----------------------------------+--------------------------------------------------------------+
-| Username                         | Password                                                     |
-+----------------------------------+--------------------------------------------------------------+
-| surveybot                        |                                                              |
-| c3ecacacc7b94f909d04dbfd308a9b93 | $2a$10$u5815SIBe2Fq1FZlv9S8I.VjU3zeSPBrIEg9wvpiLaS7ImuiItEiK |
-| 5b785171bfb34762a933e127630c4860 | $2a$10$3m0quqyvCE8Z/R1gFcCOWO6tEj6FtqtBn8fRAXQXmaKmg.HDGpS/G |
-| root                             | $2a$10$VM6EeymRxJ29r8Wjkr8Dtev0O.1STWb4.4ScG.anuu7v0EFJwgjjO |
-| snowscan                         | $2a$10$spHk8ZGr54VWf4kNER/IReO.I63YH9d7WaYp9wjiRswDMR.P/Q9aa |
-| ff0a21fc6fc2488195e16ea854c963ee | $2a$10$RnJsISTLc9W3iUcUggl1KOG9vqADED24CQcQ8zvUm1Ir9pxS.Pduq |
-| channelexport                    |                                                              |
-| 9ecfb4be145d47fda0724f697f35ffaf | $2a$10$s.cLPSjAVgawGOJwB7vrqenPg2lrDtOECRtjwWahOzHfq1CoFyFqm |
-+----------------------------------+--------------------------------------------------------------+
-8 rows in set (0.002 sec)
-```
+Y después de ingresar el vHost podemos ver la versión antigüa de la página de HackTheBox
 
-## Cracking with rules
+![](/assets/images/htb-writeup-twoMillion/website2.png)
 
-There was a hint earlier that some variation of `PleaseSubscribe!` is used.
+Podemos observar que la página tiene habilitada la parte de "join". Después de hacer click en el botón "Join HTB" nos redirige a /invite 
 
-I'll use hashcat for this and since I don't know the hash ID for bcrypt by heart I can find it in the help.
+![](/assets/images/htb-writeup-twoMillion/website3.png)
+
+Esto parece ser la versión antigüa de invitación de HTB. lo que podemos hacer es ver el código fuente de la página.
+
+![](/assets/images/htb-writeup-twoMillion/website4.png)
+
+Al parecer la segunda función del script JS se llama cuando se da click en el botón y envía una petición POST a "/api/v1/invite/verify", para después validar si el código ingresado es valido o no. Al parecer también hay otro script llamado "inviteapi.min.js" siendo cargado en la página, al parecer esta pfiscadp, sin embargo lo podemos ingresar en "de4js" para que sea un código leible  
+
+![](/assets/images/htb-writeup-twoMillion/website5.png)
+
+
+![](/assets/images/htb-writeup-twoMillion/website6.png)
 
 ```
-C:\bin\hashcat>hashcat --help | findstr bcrypt
-   3200 | bcrypt $2*$, Blowfish (Unix)                     | Operating System
+function verifyInviteCode(code) {
+    var formData = {
+        "code": code
+    };
+    $.ajax({
+        type: "POST",
+        dataType: "json",
+        data: formData,
+        url: '/api/v1/invite/verify',
+        success: function (response) {
+            console.log(response)
+        },
+        error: function (response) {
+            console.log(response)
+        }
+    })
+}
+
+function makeInviteCode() {
+    $.ajax({
+        type: "POST",
+        dataType: "json",
+        url: '/api/v1/invite/how/to/generate',
+        success: function (response) {
+            console.log(response)
+        },
+        error: function (response) {
+            console.log(response)
+        }
+    })
+}
+```
+Podemos obervar dos funciones, la primera es similar a la que vimos anteriormente que hace una petición POST pero la segunda se ve mas interesante para nuestro proposito, por lo que se ve, es que se puede hacer una petición POST a "/api/v1/invite/how/to/generate". Este endpoint se ve que puede ser muy interesante, entonces para acceder lo que podemos hacer es llamar esta función de JS desde la consola usando "curl"
+
+## API
+
+![](/assets/images/htb-writeup-twoMillion/api1.png)
+
+Bueno, para esto tuve que investigar tipos de encriptación, ya que si leemos el JSON result podemos observar que nos da una pista. por lo que investigue la salida de "data" esta encriptado en "ROT13" o también conocido como encriptación César, básicamente lo que hace esta encriptación es recorrer el abecedario 13 lugares. Ya he tenido experiencia con esta encriptación gracias a OverTheWire y hay una página que lo desencripta
+
+![](/assets/images/htb-writeup-twoMillion/api2.png)
+
+Pues el siguiente paso es fácil, hacer lo que nos pide la API, haremos la petición correspondiente 
+
+![](/assets/images/htb-writeup-twoMillion/api3.png)
+
+Como podemos observar ahora no esta encriptado, ahora esta códificado y la codificación es en Base64, entonces lo decodificamos. Y al parecer ya tenemos nuestro código de invitación y podemos ponerlo en la página.
+
+![](/assets/images/htb-writeup-twoMillion/api4.png)
+
+Ingresamos el código en la página correspondiente y como podemos observar, nos muestra una página de registro, lo que haremos ahora es poner nuestros datos, un correo falso y la contraseña que queramos.
+
+![](/assets/images/htb-writeup-twoMillion/api5.png)
+
+Ahora vemos la página de login, ingresamos nuestros datos anteriores
+
+![](/assets/images/htb-writeup-twoMillion/api6.png)
+
+Y listo, ya ingresamos a la página /home, al revisar, pude ver que hay una página interesante, "Access", vemaos que podemos hacer.
+
+![](/assets/images/htb-writeup-twoMillion/api7.png)
+
+Ingresamos a Access y podemos ver que nos deja descargar y regenerar su VPN para poder ingresar a HTB, Pues es hora de usar burpsuite e interceptar y ver lo que hace el botón de "Connection Pack"
+
+
+![](/assets/images/htb-writeup-twoMillion/api8.png)
+
+```
+GET /api/v1/user/vpn/generate HTTP/1.1
+Host: 2million.htb
+User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Referer: http://2million.htb/home/access
+DNT: 1
+Connection: close
+Cookie: PHPSESSID=jtfkmq8glgfqbqpm4dokukah86
+Upgrade-Insecure-Requests: 1
+```
+Después de dar click en el botón se crea una petición GET hacia "/api/v1/users/vpn/generate" y retorna un archivo VPN para que nuestro usuario lo descargue.
+
+Probemos que podemos hacer si hacemos un request a la URL de /api
+
+
+![](/assets/images/htb-writeup-twoMillion/api9.png)
+
+```
+Usamos -v para poder ver mas detalles sobre la respuesta del servidor, asi como la respuesta del código
 ```
 
-My go-to rules is normally one of those two ruleset:
+Al parecer obtenemos el status 401 que es cuando no estas autorizado, 
 
-- [https://github.com/NSAKEY/nsa-rules/blob/master/_NSAKEY.v2.dive.rule](https://github.com/NSAKEY/nsa-rules/blob/master/_NSAKEY.v2.dive.rule)
-- [https://github.com/NotSoSecure/password_cracking_rules/blob/master/OneRuleToRuleThemAll.rule](https://github.com/NotSoSecure/password_cracking_rules/blob/master/OneRuleToRuleThemAll.rule)
+![](/assets/images/htb-writeup-twoMillion/api10.png)
 
-These will perform all sort of transformations on the wordlist and we can quickly crack the password: `PleaseSubscribe!21`
+Pues utilice la cookie que previamente nos dio el burpsuite para poder ingresar y nos lanzó un código 200, que significa Ok.
 
-```
-C:\bin\hashcat>hashcat -a 0 -m 3200 -w 3 -O -r rules\_NSAKEY.v2.dive.rule hash.txt wordlist.txt
-[...]
-$2a$10$VM6EeymRxJ29r8Wjkr8Dtev0O.1STWb4.4ScG.anuu7v0EFJwgjjO:PleaseSubscribe!21
+Ahora intentemos con /api/v1
 
-Session..........: hashcat
-Status...........: Cracked
-Hash.Name........: bcrypt $2*$, Blowfish (Unix)
-[...]
-```
 
-The root password from MatterMost is the same as the local root password so we can just su to root and get the system flag.
+![](/assets/images/htb-writeup-twoMillion/api11.png)
 
-![](/assets/images/htb-writeup-delivery/root.png)
+Y obtenemos otras URL's con las cuales trabajar, probremos con las de admin.
+
+
+![](/assets/images/htb-writeup-twoMillion/api12.png)
+
+Pues no era ninguna sorpresa que no estamos autorizados para poder usar este endpoint, intentemos con otra 
+
+
+![](/assets/images/htb-writeup-twoMillion/api13.png)
+
+Y otra vez obtenemos un código de error 404 intentemos con el ultimo, y como podemos observar, es un PUT.
+
+![](/assets/images/htb-writeup-twoMillion/api14.png)
+
+Ahora no nos da ese error, pero nos marca que el contenido no es valido. Cuando usamos API's es usual que usemos JSON para enviar y recibir datos, y ahora mismo sabemos que la API nos contesta con JSON, entonces intentemos poner el "Content-type" header en JSON e intentemos otra vez
+
+![](/assets/images/htb-writeup-twoMillion/api15.png)
+
+Interesante, ahora nos dice que nos hace falta el parametro "is_admin". Pues pongámoslo también 
+
+
+![](/assets/images/htb-writeup-twoMillion/api16.png)
+
+Nos vuelve a pedir otro paremetro, esta vez, is_admin tiene que ser 1 o 0, a chambear.
+
+![](/assets/images/htb-writeup-twoMillion/api17.png)
+
+¡Cool!, esto solo significa que ahora nuestro usuario "camelot" es ahora un administrador, ya que este endpoint, lo que hace es actualizar el estado de nuestro usuario, comprovemoslo con el EndPoint para autenticar administradores 
+
+![](/assets/images/htb-writeup-twoMillion/api18.png)
+
+Estabamos en lo correcto, ahora obtenemos un true, confirmando lo anterior.
+
+
+
